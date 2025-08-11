@@ -29,6 +29,7 @@ class PetronectScraper:
         self.current_code = None
         self.current_obj = None
         self.current_end_date = None
+        
     def setup_driver(self):
         try:
             if not os.path.exists(self.temp_download_dir):
@@ -174,8 +175,6 @@ class PetronectScraper:
             except Exception as e:
                 print(f"Erro ao remover pasta temporária: {e}")
 
-# --- FUNÇÕES AUXILIARES ---
-
 def wait_for_downloads_and_move(temp_dir, final_dir):
     print("\nAguardando a finalização dos downloads...")
     timeout = 120
@@ -274,20 +273,13 @@ def get_codes_from_file(file_path):
         return []
 
 def processar_oportunidade(code, scraper_instance):
-    """
-    Processa uma única oportunidade: verifica se já foi baixada,
-    busca no site, baixa os anexos e os organiza.
-    """
     code = str(code).strip()
     print(f"\n{'='*20} PROCESSANDO OPORTUNIDADE: {code} {'='*20}")
 
-    # --- ALTERAÇÃO PRINCIPAL ---
-    # Verifica se a pasta para este código já existe no diretório atual
     target_folder_path = os.path.join(os.getcwd(), code)
     if os.path.exists(target_folder_path):
         print(f"⏩ AVISO: A pasta para a oportunidade '{code}' já existe. Pulando para a próxima.")
-        return # Pula o processamento deste código
-    # --- FIM DA ALTERAÇÃO ---
+        return
 
     if scraper_instance.find_code_by_paginating(code):
         print("\nDados do código encontrado:")
