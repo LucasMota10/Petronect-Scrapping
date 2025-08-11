@@ -2,6 +2,8 @@
 
 Este script automatiza a busca por códigos de oportunidade no portal de licitações da Petronect, realiza o download dos arquivos anexos e os organiza em pastas locais.
 
+https://www.petronect.com.br/irj/go/km/docs/pccshrcontent/Site%20Content%20(Legacy)/Portal2018/pt/lista_licitacoes_publicadas_ft.html
+
 ## O que o script faz?
 - Navega até o portal de licitações públicas da Petronect.
 - Busca por um ou mais códigos de oportunidade, paginando se necessário.
