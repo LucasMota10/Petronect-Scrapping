@@ -27,7 +27,8 @@ class PetronectScraper:
         self.page_found = None
         self.session = requests.Session()
         self.current_code = None
-
+        self.current_obj = None
+        self.current_end_date = None
     def setup_driver(self):
         try:
             if not os.path.exists(self.temp_download_dir):
@@ -83,6 +84,8 @@ class PetronectScraper:
             if cells:
                 row_data = [cell.get_text(strip=True) for cell in cells]
                 if row_data and row_data[0] == self.current_code:
+                    self.current_obj = row_data[1]
+                    self.current_end_date = row_data[6].replace("/","_")
                     return row_data
         return None
 
@@ -116,7 +119,7 @@ class PetronectScraper:
         if not self.job_data:
             print("Nenhum dado encontrado para criar a pasta.")
             return None
-        folder_path = os.path.join(os.getcwd(), self.current_code)
+        folder_path = os.path.join(os.getcwd(), self.current_code+"_"+self.current_obj+"_"+self.current_end_date)
         os.makedirs(folder_path, exist_ok=True)
         print(f"Pasta de destino '{folder_path}' garantida.")
         return folder_path
@@ -271,7 +274,21 @@ def get_codes_from_file(file_path):
         return []
 
 def processar_oportunidade(code, scraper_instance):
+    """
+    Processa uma única oportunidade: verifica se já foi baixada,
+    busca no site, baixa os anexos e os organiza.
+    """
+    code = str(code).strip()
     print(f"\n{'='*20} PROCESSANDO OPORTUNIDADE: {code} {'='*20}")
+
+    # --- ALTERAÇÃO PRINCIPAL ---
+    # Verifica se a pasta para este código já existe no diretório atual
+    target_folder_path = os.path.join(os.getcwd(), code)
+    if os.path.exists(target_folder_path):
+        print(f"⏩ AVISO: A pasta para a oportunidade '{code}' já existe. Pulando para a próxima.")
+        return # Pula o processamento deste código
+    # --- FIM DA ALTERAÇÃO ---
+
     if scraper_instance.find_code_by_paginating(code):
         print("\nDados do código encontrado:")
         print(scraper_instance.job_data)
