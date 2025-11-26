@@ -37,6 +37,7 @@ class PetronectScraper:
             options = webdriver.ChromeOptions()
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
+            # options.add_argument("--headless") # Descomente se não quiser ver o navegador
             prefs = {
                 "download.default_directory": self.temp_download_dir,
                 "download.prompt_for_download": False,
@@ -56,10 +57,21 @@ class PetronectScraper:
         if not self.driver:
             self.setup_driver()
         try:
-            print(f"\nAcessando a URL inicial: {self.url}")
-            self.driver.get(self.url)
-            WebDriverWait(self.driver, 10).until(EC.presence_of_element_located((By.CLASS_NAME, 'table1')))
-            print("Página carregada com sucesso.")
+            # Verifica se já estamos na URL correta para evitar recarregamentos desnecessários
+            if self.driver.current_url != self.url:
+                print(f"\nAcessando a URL inicial: {self.url}")
+                self.driver.get(self.url)
+            
+            # Espera pela tabela de resultados e pela barra de pesquisa
+            WebDriverWait(self.driver, 15).until(EC.presence_of_element_located((By.CLASS_NAME, 'table1')))
+            WebDriverWait(self.driver, 15).until(EC.presence_of_element_located((By.ID, 'filterNewLayoutKeyWord')))
+            
+            # Garante que não há modais bloqueando (clica no corpo da página se necessário)
+            try:
+                self.driver.find_element(By.TAG_NAME, 'body').click()
+            except:
+                pass
+
             if not self.session.cookies:
                 self.get_session_cookies()
         except Exception as e:
@@ -71,9 +83,12 @@ class PetronectScraper:
         cookies = self.driver.get_cookies()
         for cookie in cookies:
             self.session.cookies.set(cookie['name'], cookie['value'])
-        print("Cookies da sessão coletados.")
+        # print("Cookies da sessão coletados.")
 
     def find_code_in_page(self):
+        """
+        Analisa a tabela visível para encontrar o código desejado.
+        """
         self.soup = BeautifulSoup(self.driver.page_source, 'html.parser')
         table = self.soup.find('table', class_='table1')
         if not table: return None
@@ -84,43 +99,77 @@ class PetronectScraper:
             cells = row.find_all('td')
             if cells:
                 row_data = [cell.get_text(strip=True) for cell in cells]
+                # Verifica se a primeira coluna corresponde ao código atual
                 if row_data and row_data[0] == self.current_code:
                     self.current_obj = row_data[1]
                     self.current_end_date = row_data[6].replace("/","_")
                     return row_data
         return None
 
-    def find_code_by_paginating(self, code_to_find):
-        self.current_code = str(code_to_find)
-        self.go_to_first_page()
-        page_number = 1
-        while True:
-            print(f"\nBuscando código '{self.current_code}' na página {page_number}...")
+    def search_code_and_verify(self, code_to_find):
+        """
+        Usa a barra de pesquisa do site para encontrar o código diretamente.
+        Usa JS Click para evitar erros de interceptação.
+        """
+        self.current_code = str(code_to_find).strip()
+        self.go_to_first_page() 
+        
+        print(f"\nBuscando código '{self.current_code}' usando a barra de pesquisa...")
+
+        try:
+            # 1. Localiza a caixa de texto
+            search_input = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.ID, 'filterNewLayoutKeyWord'))
+            )
+            
+            # 2. Limpa e insere o código
+            search_input.clear()
+            search_input.send_keys(self.current_code)
+            
+            # 3. Localiza o botão de busca
+            search_button = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.ID, 'resultTableHeaderKeySubmitBtn'))
+            )
+            
+            # CORREÇÃO: Usar JavaScript para clicar, ignorando overlays/modais transparentes
+            self.driver.execute_script("arguments[0].click();", search_button)
+            
+            # 4. Espera resultados
+            # print("Aguardando resultados...")
+            sleep(random.uniform(3, 5)) 
+
+            # 5. Verifica resultados
             job_data = self.find_code_in_page()
+            
             if job_data:
                 self.job_data = job_data
-                self.page_found = page_number
-                print(f"Código '{self.current_code}' encontrado na página {page_number}.")
+                self.page_found = 1 
+                print(f"✅ Código '{self.current_code}' encontrado e dados coletados.")
                 return True
+            else:
+                print(f"❌ Código '{self.current_code}' não encontrado nos resultados da busca.")
+                return False
+
+        except Exception as e:
+            print(f"Erro durante a busca pelo código '{self.current_code}': {e}")
+            # Se der erro de clique ou timeout, damos refresh para limpar a tela para a próxima tentativa
             try:
-                next_button = WebDriverWait(self.driver, 10).until(EC.element_to_be_clickable((By.ID, 'next')))
-                if 'disabled' in next_button.get_attribute('class'):
-                    print(f"Código '{self.current_code}' não encontrado. Fim da busca.")
-                    break
-                next_button.click()
-                sleep(random.uniform(3, 6))
-                page_number += 1
-            except Exception:
-                print("Botão 'Próximo' não foi encontrado ou não ficou clicável. Fim da busca.")
-                break
-        print(f"Código '{self.current_code}' não foi encontrado em nenhuma página.")
-        return False
+                print("Tentando recuperar interface com Refresh...")
+                self.driver.refresh()
+                sleep(3)
+            except:
+                pass
+            return False
 
     def create_folder(self):
         if not self.job_data:
             print("Nenhum dado encontrado para criar a pasta.")
             return None
-        folder_path = os.path.join(os.getcwd(), self.current_code+"_"+self.current_obj+"_"+self.current_end_date)
+        # Limpa caracteres inválidos para nome de pasta
+        safe_obj = "".join([c for c in self.current_obj if c.isalnum() or c in (' ', '-', '_')]).strip()
+        folder_name = f"{self.current_code}_{safe_obj}_{self.current_end_date}"
+        folder_path = os.path.join(os.getcwd(), folder_name)
+        
         os.makedirs(folder_path, exist_ok=True)
         print(f"Pasta de destino '{folder_path}' garantida.")
         return folder_path
@@ -129,17 +178,22 @@ class PetronectScraper:
         if not self.page_found:
             return []
         print(f"\nIniciando o processo de download de anexos via Selenium...")
+        modal_id = None
         try:
             target_row_selector = f'a[data-opport-num="{self.current_code}"]'
             row_element_link = WebDriverWait(self.driver, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, target_row_selector)))
             row_element = row_element_link.find_element(By.XPATH, './ancestor::tr')
             attachment_link = row_element.find_element(By.CSS_SELECTOR, '.modal-anexo')
             modal_id = attachment_link.get_attribute('data-target')
+            
+            # Abre o modal com JS click para garantir
             self.driver.execute_script("arguments[0].click();", attachment_link)
             print(f"Link de anexo clicado. Aguardando o modal com ID: {modal_id}...")
+            
             modal_table = WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.CSS_SELECTOR, f'{modal_id} table.table')))
             print("Conteúdo do modal carregado. Clicando nos botões de download...")
             sleep(2)
+            
             attachment_rows = modal_table.find_elements(By.TAG_NAME, 'tr')
             downloaded_files_names = []
             for attachment_row in attachment_rows:
@@ -151,18 +205,32 @@ class PetronectScraper:
                     print(f"Clicando para baixar '{file_name}'...")
                     self.driver.execute_script("arguments[0].click();", download_button)
                     downloaded_files_names.append(file_name)
-                    sleep(random.uniform(3, 5))
+                    sleep(random.uniform(2, 4)) 
                 except Exception as e:
                     print(f"Erro ao processar linha do anexo: {e}")
-            try:
-                close_button = self.driver.find_element(By.CSS_SELECTOR, f'{modal_id} .modal-header button.close')
-                self.driver.execute_script("arguments[0].click();", close_button)
-            except Exception:
-                pass
+            
             return downloaded_files_names
+
         except Exception as e:
             print(f"Erro ao tentar baixar os anexos: {e}")
             return []
+        
+        finally:
+            # CORREÇÃO: Garante que o modal será fechado e espera ele sumir
+            if modal_id:
+                try:
+                    # Tenta encontrar o botão de fechar dentro do header do modal específico
+                    close_buttons = self.driver.find_elements(By.CSS_SELECTOR, f'{modal_id} .modal-header button.close')
+                    if close_buttons:
+                        self.driver.execute_script("arguments[0].click();", close_buttons[0])
+                        # Espera o modal ficar invisível
+                        try:
+                            WebDriverWait(self.driver, 5).until(EC.invisibility_of_element_located((By.CSS_SELECTOR, modal_id)))
+                        except:
+                            # Se não ficar invisível, tenta clicar no body para tirar o foco
+                            self.driver.find_element(By.TAG_NAME, 'body').click()
+                except Exception as e:
+                    print(f"Aviso: Não foi possível fechar o modal corretamente: {e}")
 
     def close_driver(self):
         if self.driver:
@@ -185,7 +253,7 @@ def wait_for_downloads_and_move(temp_dir, final_dir):
             break
         sleep(1)
     
-    sleep(3)
+    sleep(2)
 
     files_in_temp = os.listdir(temp_dir)
     if not files_in_temp:
@@ -276,12 +344,17 @@ def processar_oportunidade(code, scraper_instance):
     code = str(code).strip()
     print(f"\n{'='*20} PROCESSANDO OPORTUNIDADE: {code} {'='*20}")
 
-    target_folder_path = os.path.join(os.getcwd(), code)
-    if os.path.exists(target_folder_path):
-        print(f"⏩ AVISO: A pasta para a oportunidade '{code}' já existe. Pulando para a próxima.")
+    ja_processado = False
+    for pasta in os.listdir(os.getcwd()):
+        if pasta.startswith(code + "_") and os.path.isdir(pasta):
+            print(f"⏩ AVISO: Já existe uma pasta iniciando com '{code}'. Pulando para a próxima.")
+            ja_processado = True
+            break
+    
+    if ja_processado:
         return
 
-    if scraper_instance.find_code_by_paginating(code):
+    if scraper_instance.search_code_and_verify(code):
         print("\nDados do código encontrado:")
         print(scraper_instance.job_data)
         folder_path = scraper_instance.create_folder()
