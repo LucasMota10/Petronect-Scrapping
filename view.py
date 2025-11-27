@@ -1,7 +1,6 @@
 # arquivo: view.py
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, filedialog
-from tkinter import font as tkfont
 
 class ScraperView:
     def __init__(self, root):
@@ -58,7 +57,8 @@ class ScraperView:
         input_card.pack(fill="x", pady=(0, 15))
 
         lbl_instrucoes = ttk.Label(input_card, text="Entrada de Dados", style="SubHeader.TLabel")
-        lbl_instrucoes.pack(anchor="w", marginBottom=10)
+        # CORREÇÃO AQUI: Trocado marginBottom por pady
+        lbl_instrucoes.pack(anchor="w", pady=(0, 10))
 
         # Botão Importar (Estilizado manualmente com tk.Button para cor exata)
         self.btn_importar = tk.Button(input_card, text="📂 Importar Planilha (.csv)", 
@@ -101,7 +101,7 @@ class ScraperView:
         lbl_footer = tk.Label(self.root, text="v2.0 - Desenvolvido para Petronect Scraper", bg=self.colors["bg"], fg="#95A5A6", font=("Segoe UI", 8))
         lbl_footer.pack(side="bottom", pady=5)
 
-    # --- MÉTODOS DE INTERFACE (Mantidos iguais para compatibilidade) ---
+    # --- MÉTODOS DE INTERFACE ---
 
     def set_commands(self, start_cmd, import_cmd):
         self.btn_iniciar.config(command=start_cmd)
@@ -125,8 +125,8 @@ class ScraperView:
     def update_log(self, message):
         self.txt_log.config(state='normal')
         
-        # Adiciona emojis baseados no texto para ficar bonito
-        prefix = "•"
+        # Tags de cores para o log
+        tag = "normal"
         if "Erro" in message or "❌" in message:
             self.txt_log.tag_config("error", foreground="#FF5555")
             tag = "error"
@@ -136,15 +136,12 @@ class ScraperView:
         elif "Baixando" in message or "⬇️" in message:
             self.txt_log.tag_config("info", foreground="#8BE9FD")
             tag = "info"
-        else:
-            tag = "normal"
 
         self.txt_log.insert(tk.END, f"{message}\n", tag)
         self.txt_log.see(tk.END)
         self.txt_log.config(state='disabled')
 
     def toggle_buttons(self, state):
-        # Mudar a cor visualmente para indicar que está desabilitado
         if state == 'disabled':
             self.btn_iniciar.config(state='disabled', bg="#95a5a6", cursor="arrow")
             self.btn_importar.config(state='disabled', bg="#95a5a6", cursor="arrow")
