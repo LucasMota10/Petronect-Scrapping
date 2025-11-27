@@ -2,7 +2,8 @@
 import os
 import time
 import shutil
-import re # Importante para limpar o texto
+import re
+import zipfile # <--- Importante para descompactar
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
@@ -42,20 +43,14 @@ class PetronectScraper:
         self.log("🌍 Site acessado.")
 
     def sanitize_text(self, text):
-        """Limpa texto para ser usado como nome de pasta (remove caracteres ilegais)"""
-        # Remove acentos e caracteres especiais, mantém letras, números, espaços, hífens
+        """Limpa texto para nome de pasta"""
         text = str(text).strip()
-        # Substitui barras de data por underline (30/09 -> 30_09)
         text = text.replace("/", "_")
-        # Remove qualquer coisa que não seja alfanumérico, espaço, underline ou traço
         text = re.sub(r'[^\w\s\-\_]', '', text)
-        # Remove espaços duplos
         text = re.sub(r'\s+', ' ', text)
-        # Limita o tamanho para evitar erros do Windows (max 50 chars para o objeto)
         return text[:60].strip()
 
     def set_download_folder(self, folder_name):
-        """Cria a pasta com o NOME COMPLETO e configura o Chrome"""
         folder_path = os.path.join(self.base_download_dir, folder_name)
         
         if not os.path.exists(folder_path):
@@ -67,13 +62,10 @@ class PetronectScraper:
         return folder_path
 
     def get_opportunity_details(self):
-        """Lê a tabela para extrair Objeto e Data Fim"""
         try:
-            # Pega a primeira linha da tabela de resultados (tbody id="result")
             linha = self.driver.find_element(By.CSS_SELECTOR, "#result tr")
             colunas = linha.find_elements(By.TAG_NAME, "td")
             
-            # Baseado no HTML: Coluna 1 = Objeto, Coluna 6 = Data Fim
             if len(colunas) > 6:
                 objeto_raw = colunas[1].text
                 data_fim_raw = colunas[6].text
@@ -102,30 +94,26 @@ class PetronectScraper:
 
             time.sleep(3) 
 
-            # 2. Verificação se existe
+            # 2. Verifica se existe
             page_source = self.driver.page_source
             if "Nenhum registro encontrado" in page_source or "No records found" in page_source:
                 self.log(f"⚠️ Código {codigo} não encontrado.")
                 return
 
-            # 3. --- NOVO: Extrai dados para o nome da pasta ---
+            # 3. Cria pasta com nome formatado
             objeto, data_fim = self.get_opportunity_details()
-            
-            # Monta o nome: CODIGO_OBJETO_DATA
             nome_pasta = f"{codigo}_{objeto}_{data_fim}"
-            
-            # Configura a pasta de download com o novo nome
             current_folder = self.set_download_folder(nome_pasta)
 
-            # 4. Abre modal e baixa
+            # 4. Abre modal
             modal_id = self.open_modal(codigo)
             
             if modal_id:
+                # Baixa e extrai
                 self.download_files_from_modal(modal_id, current_folder)
                 self.close_modal()
             else:
                 self.log(f"ℹ️ Código {codigo} sem anexos públicos.")
-                # Opcional: Remover pasta se estiver vazia
                 try:
                     os.rmdir(current_folder)
                 except:
@@ -188,7 +176,10 @@ class PetronectScraper:
                 except Exception as e:
                     pass
             
-            self.wait_for_downloads_to_finish(save_folder)
+            # Aguarda downloads
+            if self.wait_for_downloads_to_finish(save_folder):
+                # Se terminou com sucesso, extrai os ZIPs
+                self.extract_zips_in_folder(save_folder)
 
         except Exception as e:
             self.log(f"⚠️ Erro download: {e}")
@@ -207,18 +198,51 @@ class PetronectScraper:
             
             if not downloads_em_andamento:
                 if len(files) > 0:
-                    self.log(f"✅ Sucesso na pasta: {os.path.basename(folder)}")
-                    break
+                    self.log(f"✅ Download concluído na pasta: {os.path.basename(folder)}")
+                    return True # Retorna True para autorizar a extração
                 else:
                     if time.time() - start_time > 5:
                         self.log("⚠️ Pasta vazia.")
-                        break
+                        return False
             
             if time.time() - start_time > timeout:
                 self.log("⚠️ Timeout de download.")
-                break
+                return False
             
             time.sleep(1)
+
+    def extract_zips_in_folder(self, folder):
+        """
+        Varre a pasta, extrai arquivos .zip e deleta o arquivo compactado original.
+        """
+        self.log("📦 Verificando arquivos ZIP...")
+        try:
+            files = os.listdir(folder)
+            count = 0
+            for file in files:
+                if file.lower().endswith(".zip"):
+                    file_path = os.path.join(folder, file)
+                    # Cria uma pasta com o mesmo nome do arquivo zip (sem a extensão)
+                    folder_name = os.path.splitext(file)[0]
+                    extract_path = os.path.join(folder, folder_name)
+                    
+                    try:
+                        with zipfile.ZipFile(file_path, 'r') as zip_ref:
+                            zip_ref.extractall(extract_path)
+                        
+                        self.log(f"   ✨ Extraído: {file}")
+                        
+                        # Remove o zip original para limpar
+                        os.remove(file_path)
+                        count += 1
+                    except Exception as e:
+                        self.log(f"   ❌ Erro ao extrair {file}: {e}")
+            
+            if count == 0:
+                self.log("   (Nenhum arquivo zip encontrado para extrair)")
+                
+        except Exception as e:
+            self.log(f"⚠️ Erro na rotina de extração: {e}")
 
     def close_modal(self):
         try:
