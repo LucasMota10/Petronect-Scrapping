@@ -6,7 +6,7 @@ https://www.petronect.com.br/irj/go/km/docs/pccshrcontent/Site%20Content%20(Lega
 
 ## O que o script faz?
 - Navega até o portal de licitações públicas da Petronect.
-- Busca por um ou mais códigos de oportunidade, paginando se necessário.
+- Busca por um ou mais códigos de oportunidade.
 - Para cada código encontrado, cria uma pasta com um nome descritivo (código, objeto, data).
 - Baixa todos os arquivos anexos da oportunidade para a pasta correspondente.
 - Descompacta arquivos `.zip` que foram baixados.
@@ -32,23 +32,19 @@ Siga os passos abaixo para configurar o ambiente e instalar as dependências do 
 3.  **Instale as bibliotecas Python**
     Execute o comando abaixo para instalar todas as bibliotecas necessárias de uma só vez:
     ```bash
-    pip install pandas selenium webdriver-manager beautifulsoup4 requests openpyxl
+    pip install -r requirements.txt
     ```
 
 ## Como Usar
 
 1.  Com o terminal aberto na pasta correta, execute o script com o seguinte comando:
     ```bash
-    python nome_do_seu_script.py
+    python main.py
     ```
-2.  O script irá pedir para você escolher o modo de operação:
-    * **Modo 1: Buscar um código individual**
-        - Digite `1` e pressione Enter.
-        - Em seguida, digite o código da oportunidade que deseja buscar.
+2.  Uma interface será aberta, permitindo importar um csv ou inserir manualmente os códigos:
 
-    * **Modo 2: Processar um arquivo com múltiplos códigos**
-        - Digite `2` e pressione Enter.
-        - Forneça o caminho completo para o seu arquivo (`.csv` ou `.xlsx`).
+    * **Processar um arquivo com múltiplos códigos**
+        - CLique no botão de importar CSV e selecione seu arquivo
         - **Importante:** O arquivo precisa ter uma coluna com o cabeçalho **`oportunidade`**, contendo a lista dos códigos a serem processados.
 
 3.  Aguarde o script finalizar. Ele irá abrir uma janela do Google Chrome para realizar a automação e exibirá o progresso no terminal.
